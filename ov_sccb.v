@@ -63,8 +63,9 @@ module ov_sccb(clk, reset, sio_d, sio_c, sccb_e, pwdn, addr, subaddr, w_data, r_
     reg [3:0] bit_cnt;  // bit counter
 
     // State variables
-    reg [2:0] state,
-         next_state;
+    (* syn_encoding = "safe" *)
+    reg [2:0] state;
+    reg [2:0] next_state;
 
     parameter s_idle    = 0,
               s_addr    = 1,
@@ -80,7 +81,7 @@ module ov_sccb(clk, reset, sio_d, sio_c, sccb_e, pwdn, addr, subaddr, w_data, r_
 
     assign tr_end = state == s_idle ? 1'b1 : 1'b0;
 
-    always @ (posedge clk or negedge reset) begin
+    always @ (posedge clk) begin
         if (~reset) begin
             cycle     <= 1'b0;
             sio_oe <= 1'b1;

@@ -25,69 +25,98 @@ module ov_sccb_tb ();
     wire sio_c;
     wire sccb_e;
     wire pwdn;
-    reg [7:0] addr;
-    reg [7:0] subaddr;
+    reg [7:0] chip_addr;
+    reg [7:0] sub_addr;
     reg [7:0] w_data;
     wire [7:0] r_data;
+
     reg tr_start;
-    wire tr_end;
+
+    wire done;
+    wire busy;
 
     // for counting the cycles
     reg [15:0] cycle;
 
     // module, parameters, instance, ports
-    ov_sccb #() ov_sccb (.clk(clock),
-                         .reset(reset),
-                         .sio_d(sio_d),
-                         .sio_c(sio_c),
-                         .sccb_e(sccb_e),
-                         .pwdn(pwdn),
-                         .addr(addr),
-                         .subaddr(subaddr),
-                         .w_data(w_data),
-                         .r_data(r_data),
-                         .tr_start(tr_start),
-                         .tr_end(tr_end));
+    ov_sccb #() ov_sccb (
+        .clk(clock),
+        .reset(reset),
+        .sio_d(sio_d),
+        .sio_c(sio_c),
+        .sccb_e(sccb_e),
+        .pwdn(pwdn),
+        .addr(chip_addr),
+        .subaddr(sub_addr),
+        .w_data(w_data),
+        .r_data(r_data),
+        .tr_start(tr_start),
+        .tr_end(tr_end),
+        .busy(busy)
+    );
+
+    localparam CHIP_ADDR = 8'h42;
 
     // Initial conditions; setup
     initial begin
         $timeformat(-9,1, "ns", 12);
-        $monitor("%t, %b, CYCLE: %d", $realtime, clock, cycle);
+        $monitor("%t, %b, CYCLE: %d,     SIO_C: %b    SIO_D: %b", $realtime, clock, cycle, sio_c, sio_d);
 
-		// Initial Conditions
-		clock <= 0;
+        $timeformat(-9,1, "ns", 12);
+
+        // Initial Conditions
         cycle <= 0;
         reset <= 1'b0;
-
-        tr_start <= 0;
-
-        addr <= 8'h51;
-        subaddr <= 8'h0A;
-
-        w_data <= 8'b00110110;
-
-        // Initialize clock
-        #5
-        clock <= 1'b0;
-        tr_start <= 1'b1;
-
-		// Deassert reset
-        #100
-        reset <= 1'b1;
-
-        #400
         tr_start <= 1'b0;
 
-        #100 $finish;
+
+        // Initialize clock
+        #2
+        clock <= 1'b0;
+
+        // Deassert reset
+        #5
+        reset <= 1'b1;
+
+        $display("Beginning write transactions");
+
+        #100 write_sccb(CHIP_ADDR, 8'h00, 8'hCA);
+        #100 write_sccb(CHIP_ADDR, 8'h0A, 8'hFE);
+        #100 write_sccb(CHIP_ADDR, 8'h10, 8'hD0);
+        #100 write_sccb(CHIP_ADDR, 8'h1A, 8'hBA);
+
+        #200 $finish;
     end
 
-    assign sio_d = ov_sccb.sio_oe ? 'bz : clock;
+//    assign sio_d = ov_sccb.sio_oe ? 'bz;
 
-    always @ (posedge tr_end) begin
-        if (tr_start && tr_end)
-            $finish;
-    end
+    task write_sccb;
+        input [7:0] t_chip_addr;
+        input [7:0] t_sub_addr;
+        input [7:0] t_data;
 
+        begin
+            $display("Writing 0x%0x to register 0x%0x on chip 0x%0x", t_data, t_sub_addr, t_chip_addr);
+
+            @ (posedge clock) begin
+                chip_addr <= t_chip_addr;
+                sub_addr  <= t_sub_addr;
+                w_data    <= t_data;
+                tr_start  <= 1'b1;
+            end
+
+            @ (posedge clock)
+                tr_start  <= 1'b0;
+
+            @ (posedge clock);
+            @ (posedge clock);
+            @ (posedge clock);
+
+            while (busy && ~tr_end) begin
+                @ (posedge clock);
+            end
+        end
+    endtask
 
 
 /**************************************************************/

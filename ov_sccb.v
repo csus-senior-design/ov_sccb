@@ -35,22 +35,25 @@ Description:
     * 2-Phase read transmission cycle
 
 */
-module ov_sccb(clk, reset, sio_d, sio_c, sccb_e, pwdn, addr, subaddr, w_data, r_data, tr_start, tr_end);
-    input clk;           // Clock signal
-    input reset;         // Reset signal (active-low)
+module ov_sccb (
+        input clk,               // Clock signal
+        input reset,             // Reset signal (active-low)
 
-    inout  sio_d;        // SCCB data (tri-state)
-    output sio_c;        // SCCB clock
-    output reg sccb_e;   // SCCB transmission enable
-    output reg pwdn;     // Power-down
+        inout  sio_d,            // SCCB data (tri-state)
+        output sio_c,            // SCCB clock
+        output reg sccb_e,       // SCCB transmission enable
+        output reg pwdn,         // Power-down
 
-    input [7:0] addr;    // Address of device
-    input [7:0] subaddr; // Sub-Address (Register) to write to
-    input [7:0] w_data;  // Data to write to device
-    output reg [7:0] r_data; // Data read from device
+        input [7:0] addr,        // Address of device
+        input [7:0] subaddr,     // Sub-Address (Register) to write to
+        input [7:0] w_data,      // Data to write to device
+        output reg [7:0] r_data, // Data read from device
 
-    input tr_start;      // Transmission start
-    output tr_end;       // Transmission end
+        input tr_start,
+        output tr_end,
+
+        output reg busy
+    );
 
     reg cycle;
     wire write;
@@ -76,17 +79,18 @@ module ov_sccb(clk, reset, sio_d, sio_c, sccb_e, pwdn, addr, subaddr, w_data, r_
     assign write = addr[0] == 1'b0 ? 1'b1 : 1'b0;
     assign read = ~write;
 
-    assign sio_d = sio_oe == 1'b1 ? sio_d_reg : 'bz;
+    assign sio_d = sio_oe == 1'b0 ? sio_d_reg : 1'b0;
     assign sio_c = sccb_e == 1'b1 ? 1'b1 : clk;
 
-    assign tr_end = state == s_idle ? 1'b1 : 1'b0;
+    assign tr_end = ~busy || (state == s_idle ? 1'b1 : 1'b0);
 
     always @ (posedge clk) begin
         if (~reset) begin
+            busy      <= 1'b0;
             cycle     <= 1'b0;
-            sio_oe <= 1'b1;
+            sio_oe    <= 1'b1;
 
-            pwdn      <= 1'b0;
+            pwdn      <= 1'b1;
             sccb_e    <= 1'b1;
             sio_d_reg <= 1'bz;
 
@@ -99,7 +103,8 @@ module ov_sccb(clk, reset, sio_d, sio_c, sccb_e, pwdn, addr, subaddr, w_data, r_
         else begin
             case (state)
                 s_idle: begin
-                    pwdn      <= 1'b1;
+                    busy      <= 1'b0;
+                    pwdn      <= 1'b0;
                     sccb_e    <= 1'b1;
                     sio_d_reg <= 1'b1;
                     sio_oe    <= 1'b1;
@@ -112,6 +117,7 @@ module ov_sccb(clk, reset, sio_d, sio_c, sccb_e, pwdn, addr, subaddr, w_data, r_
 
                 // Phase 1: Address
                 s_addr: begin
+                    busy   <= 1'b1;
                     sccb_e <= 1'b0;
 
                     if (bit_cnt < 4'd8) begin
@@ -131,6 +137,8 @@ module ov_sccb(clk, reset, sio_d, sio_c, sccb_e, pwdn, addr, subaddr, w_data, r_
 
                 // Phase 2: Sub-Address
                 s_subaddr: begin
+                    busy   <= 1'b1;
+
                     if (bit_cnt < 4'd8) begin
                         sio_oe <= 1'b0;
                         sio_d_reg <= w_data[7 - bit_cnt];
@@ -148,6 +156,8 @@ module ov_sccb(clk, reset, sio_d, sio_c, sccb_e, pwdn, addr, subaddr, w_data, r_
 
                 // Phase 2: Read data
                 s_read: begin
+                    busy   <= 1'b1;
+
                     if (bit_cnt < 4'd8) begin
                         sio_oe <= 1'b0;
 
@@ -164,6 +174,8 @@ module ov_sccb(clk, reset, sio_d, sio_c, sccb_e, pwdn, addr, subaddr, w_data, r_
 
                 // Phase 3: Write data
                 s_write: begin
+                    busy   <= 1'b1;
+
                     if (bit_cnt < 4'd8) begin
                         sio_oe <= 1'b0;
                         sio_d_reg <= w_data[7 - bit_cnt];

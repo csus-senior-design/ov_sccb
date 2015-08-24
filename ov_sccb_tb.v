@@ -30,7 +30,7 @@ module ov_sccb_tb ();
     reg [7:0] w_data;
     wire [7:0] r_data;
 
-    reg tr_start;
+    reg start;
 
     wire done;
     wire busy;
@@ -41,6 +41,7 @@ module ov_sccb_tb ();
     // module, parameters, instance, ports
     ov_sccb #() ov_sccb (
         .clk(clock),
+        .clk_div(11'd8),
         .reset(reset),
         .sio_d(sio_d),
         .sio_c(sio_c),
@@ -50,8 +51,8 @@ module ov_sccb_tb ();
         .subaddr(sub_addr),
         .w_data(w_data),
         .r_data(r_data),
-        .tr_start(tr_start),
-        .tr_end(tr_end),
+        .start(start),
+        .done(done),
         .busy(busy)
     );
 
@@ -60,14 +61,14 @@ module ov_sccb_tb ();
     // Initial conditions; setup
     initial begin
         $timeformat(-9,1, "ns", 12);
-        $monitor("%t, %b, CYCLE: %d,     SIO_C: %b    SIO_D: %b", $realtime, clock, cycle, sio_c, sio_d);
+        $monitor("%t, %b, CYCLE: %d,     State: %d    SIO_C: %b    SIO_D: %b", $realtime, clock, cycle, ov_sccb.state, sio_c, sio_d);
 
         $timeformat(-9,1, "ns", 12);
 
         // Initial Conditions
         cycle <= 0;
         reset <= 1'b0;
-        tr_start <= 1'b0;
+        start <= 1'b0;
 
 
         // Initialize clock
@@ -80,12 +81,12 @@ module ov_sccb_tb ();
 
         $display("Beginning write transactions");
 
-        #100 write_sccb(CHIP_ADDR, 8'h00, 8'hCA);
-        #100 write_sccb(CHIP_ADDR, 8'h0A, 8'hFE);
-        #100 write_sccb(CHIP_ADDR, 8'h10, 8'hD0);
-        #100 write_sccb(CHIP_ADDR, 8'h1A, 8'hBA);
+        #10000 write_sccb(CHIP_ADDR, 8'h00, 8'hCA);
+        #10000 write_sccb(CHIP_ADDR, 8'h0A, 8'hFE);
+        #10000 write_sccb(CHIP_ADDR, 8'h10, 8'hD0);
+        #10000 write_sccb(CHIP_ADDR, 8'h1A, 8'hBA);
 
-        #200 $finish;
+        #20000 $finish;
     end
 
 //    assign sio_d = ov_sccb.sio_oe ? 'bz;
@@ -102,17 +103,17 @@ module ov_sccb_tb ();
                 chip_addr <= t_chip_addr;
                 sub_addr  <= t_sub_addr;
                 w_data    <= t_data;
-                tr_start  <= 1'b1;
+                start  <= 1'b1;
             end
 
             @ (posedge clock)
-                tr_start  <= 1'b0;
+                start  <= 1'b0;
 
             @ (posedge clock);
             @ (posedge clock);
             @ (posedge clock);
 
-            while (busy && ~tr_end) begin
+            while (busy && ~done) begin
                 @ (posedge clock);
             end
         end
